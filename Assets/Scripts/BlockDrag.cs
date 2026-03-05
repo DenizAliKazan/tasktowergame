@@ -1,14 +1,10 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public class BlockDrag : MonoBehaviour
 {
-    private Camera cam;
-
-    private Rigidbody highlightedBlock;
     private Rigidbody selectedBlock;
-
     private Vector3 offset;
-    private bool isDragging = false;
+    private Camera cam;
 
     void Start()
     {
@@ -17,100 +13,81 @@ public class BlockDrag : MonoBehaviour
 
     void Update()
     {
-#if UNITY_EDITOR
-        HandleMouse();
-#endif
-        HandleTouch();
-    }
-
-    void HandleMouse()
-    {
+        // Mouse deste�i
+        #if UNITY_EDITOR
         if (Input.GetMouseButtonDown(0))
-            TrySelect(Input.mousePosition);
+        {
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            RaycastHit hit;
 
-        if (Input.GetMouseButton(0) && isDragging && selectedBlock != null)
-            Drag(Input.mousePosition);
+            if (Physics.Raycast(ray, out hit))
+            {
+                if (hit.collider.CompareTag("Block"))
+                {
+                    selectedBlock = hit.collider.GetComponent<Rigidbody>();
+                    offset = selectedBlock.position - hit.point;
+                }
+            }
+        }
+
+        if (Input.GetMouseButton(0) && selectedBlock != null)
+        {
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            RaycastHit hit;
+
+            if (Physics.Raycast(ray, out hit))
+            {
+                Vector3 targetPos = hit.point + offset;
+
+                targetPos.y = selectedBlock.position.y; // sadece X ekseni
+                targetPos.z = selectedBlock.position.z;
+
+                selectedBlock.MovePosition(targetPos);
+            }
+        }
 
         if (Input.GetMouseButtonUp(0))
-            StopDragging();
-    }
-
-    void HandleTouch()
-    {
-        if (Input.touchCount == 0) return;
-
-        Touch touch = Input.GetTouch(0);
-
-        if (touch.phase == TouchPhase.Began)
-            TrySelect(touch.position);
-
-        if (touch.phase == TouchPhase.Moved && isDragging && selectedBlock != null)
-            Drag(touch.position);
-
-        if (touch.phase == TouchPhase.Ended)
-            StopDragging();
-    }
-
-    void TrySelect(Vector3 screenPos)
-    {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit hit;
-
-        if (!Physics.Raycast(ray, out hit)) return;
-        if (!hit.collider.CompareTag("Block")) return;
-
-        Rigidbody rb = hit.collider.GetComponent<Rigidbody>();
-        if (rb == null) return;
-
-        // Aynı bloğa ikinci dokunuş → sürükleme başlat
-        if (highlightedBlock == rb)
         {
-            selectedBlock = rb;
-            offset = selectedBlock.position - hit.point;
-            isDragging = true;
-            return;
+            selectedBlock = null;
         }
+        #endif
 
-        // Yeni blok seçildi
-        ClearHighlight();
-
-        highlightedBlock = rb;
-
-        SimpleOutline outline = highlightedBlock.GetComponent<SimpleOutline>();
-        if (outline != null)
-            outline.EnableOutline();
-    }
-
-    void Drag(Vector3 screenPos)
-    {
-        Ray ray = cam.ScreenPointToRay(screenPos);
-        RaycastHit hit;
-
-        if (!Physics.Raycast(ray, out hit)) return;
-
-        Vector3 targetPos = hit.point + offset;
-
-        targetPos.y = selectedBlock.position.y;
-        targetPos.z = selectedBlock.position.z;
-
-        selectedBlock.MovePosition(targetPos);
-    }
-
-    void StopDragging()
-    {
-        isDragging = false;
-        selectedBlock = null;
-    }
-
-    void ClearHighlight()
-    {
-        if (highlightedBlock != null)
+        // Touch deste�i (mobil)
+        if (Input.touchCount > 0)
         {
-            SimpleOutline outline = highlightedBlock.GetComponent<SimpleOutline>();
-            if (outline != null)
-                outline.DisableOutline();
-        }
+            Touch touch = Input.GetTouch(0);
+            Ray ray = cam.ScreenPointToRay(touch.position);
+            RaycastHit hit;
 
-        highlightedBlock = null;
+            if (touch.phase == TouchPhase.Began)
+            {
+                if (Physics.Raycast(ray, out hit))
+                {
+                    if (hit.collider.CompareTag("Block"))
+                    {
+                        selectedBlock = hit.collider.GetComponent<Rigidbody>();
+                        offset = selectedBlock.position - hit.point;
+                    }
+                }
+            }
+
+            if (touch.phase == TouchPhase.Moved && selectedBlock != null)
+            {
+                if (Physics.Raycast(ray, out hit))
+                {
+                    Vector3 targetPos = hit.point + offset;
+
+                    targetPos.y = selectedBlock.position.y; // sadece X ekseni
+                    targetPos.z = selectedBlock.position.z;
+
+                    selectedBlock.MovePosition(targetPos);
+                }
+            }
+
+            if (touch.phase == TouchPhase.Ended)
+            {
+                selectedBlock = null;
+            }
+        }
     }
 }
