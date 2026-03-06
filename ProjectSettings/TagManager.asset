@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Block
   - BlockTry
+  - Table
   layers:
   - Default
   - TransparentFX
