@@ -2,71 +2,47 @@ using UnityEngine;
 
 public class BlockDrag : MonoBehaviour
 {
-    private Rigidbody selectedBlock;
-    private Rigidbody highlightedBlock;
+    private Rigidbody glowingBlock;
+    private Rigidbody draggingBlock;
+    
     private Vector3 offset;
+    private float zDistance; 
     private Camera cam;
-
-    [Header("Glow Ayarları")]
-    public Color glowColor = Color.white;
-    [Range(0f, 10f)] public float outlineWidth = 5f;
-
-    [Header("Fizik Dengesi")]
-    [Tooltip("Sürüklenen bloğun diğerlerini fırlatmaması için kütle çarpanı")]
-    public float dragMassMultiplier = 1f;
+    private Color originalColor;
 
     void Start()
     {
         cam = Camera.main;
-        StabilizeTower();
-    }
-
-    // Oyun başında kulenin patlamasını ve sallanmasını önler
-    void StabilizeTower()
-    {
-        GameObject[] blocks = GameObject.FindGameObjectsWithTag("Block");
-
-        foreach (GameObject block in blocks)
-        {
-            Rigidbody rb = block.GetComponent<Rigidbody>();
-
-            if (rb != null)
-            {
-                rb.interpolation = RigidbodyInterpolation.Interpolate;
-                rb.Sleep();
-            }
-        }
     }
 
     void Update()
     {
-#if UNITY_EDITOR
+        #if UNITY_EDITOR
         HandleMouseInput();
-#endif
+        #else
+        HandleTouchInput();
+        #endif
+    }
 
+    void HandleMouseInput()
+    {
+        if (Input.GetMouseButtonDown(0)) ProcessTouchDown(Input.mousePosition);
+        if (Input.GetMouseButton(0) && draggingBlock != null) ProcessTouchMove(Input.mousePosition);
+        if (Input.GetMouseButtonUp(0)) ProcessTouchUp();
+    }
+
+    void HandleTouchInput()
+    {
         if (Input.touchCount > 0)
         {
-            HandleTouchInput();
+            Touch touch = Input.GetTouch(0);
+            if (touch.phase == TouchPhase.Began) ProcessTouchDown(touch.position);
+            else if (touch.phase == TouchPhase.Moved && draggingBlock != null) ProcessTouchMove(touch.position);
+            else if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled) ProcessTouchUp();
         }
     }
 
-    private void HandleMouseInput()
-    {
-        if (Input.GetMouseButtonDown(0)) ProcessClick(Input.mousePosition);
-        if (Input.GetMouseButton(0) && selectedBlock != null) DragBlock(Input.mousePosition);
-        if (Input.GetMouseButtonUp(0)) ReleaseBlock();
-    }
-
-    private void HandleTouchInput()
-    {
-        Touch touch = Input.GetTouch(0);
-
-        if (touch.phase == TouchPhase.Began) ProcessClick(touch.position);
-        else if (touch.phase == TouchPhase.Moved && selectedBlock != null) DragBlock(touch.position);
-        else if (touch.phase == TouchPhase.Ended) ReleaseBlock();
-    }
-
-    private void ProcessClick(Vector2 screenPosition)
+    void ProcessTouchDown(Vector2 screenPosition)
     {
         Ray ray = cam.ScreenPointToRay(screenPosition);
         RaycastHit hit;
@@ -75,76 +51,89 @@ public class BlockDrag : MonoBehaviour
         {
             if (hit.collider.CompareTag("Block"))
             {
-                Rigidbody hitRb = hit.collider.GetComponent<Rigidbody>();
+                Rigidbody hitRigidbody = hit.collider.GetComponent<Rigidbody>();
 
-                if (highlightedBlock == hitRb)
+                if (glowingBlock == hitRigidbody)
                 {
-                    selectedBlock = hitRb;
+                    draggingBlock = hitRigidbody;
+                    
+                    // SİHİRLİ AYARLAR:
+                    // Sürüklerken kuleyi sarsmasın diye ağırlığı geçici artırabilir veya sürtünmeyi düşürebiliriz
+                    draggingBlock.useGravity = false; 
+                    draggingBlock.isKinematic = false; // Asla kinematic yapmıyoruz
+                    draggingBlock.interpolation = RigidbodyInterpolation.Interpolate; // Hareket pürüzsüzlüğü
 
-                    // Fizik etkisini kapat (kuleyi itmesin)
-                    selectedBlock.isKinematic = true;
-
-                    offset = selectedBlock.position - hit.point;
+                    zDistance = cam.WorldToScreenPoint(draggingBlock.position).z;
+                    Vector3 clickWorldPosition = cam.ScreenToWorldPoint(new Vector3(screenPosition.x, screenPosition.y, zDistance));
+                    offset = draggingBlock.position - clickWorldPosition;
                 }
                 else
                 {
-                    SetHighlight(hitRb);
+                    RemoveGlow();
+                    glowingBlock = hitRigidbody;
+                    ApplyGlow(glowingBlock);
                 }
             }
+            else { RemoveGlow(); }
         }
+        else { RemoveGlow(); }
     }
 
-    private void DragBlock(Vector2 screenPosition)
+    void ProcessTouchMove(Vector2 screenPosition)
     {
-        Ray ray = cam.ScreenPointToRay(screenPosition);
-        RaycastHit hit;
+        Vector3 currentScreenPoint = new Vector3(screenPosition.x, screenPosition.y, zDistance);
+        Vector3 currentWorldPoint = cam.ScreenToWorldPoint(currentScreenPoint);
 
-        if (Physics.Raycast(ray, out hit))
+        Vector3 targetPos = currentWorldPoint + offset;
+
+        // Kısıtlamalar: Sadece X ekseni (veya senin oyununa göre Z)
+        targetPos.y = draggingBlock.position.y;
+        targetPos.z = draggingBlock.position.z;
+
+        // EN STABİL YÖNTEM: MovePosition
+        // Bu komut objeyi hedefe fizik kuralları içinde "iter" ama kontrol dışı hızlanmaz.
+        draggingBlock.MovePosition(targetPos);
+        
+        // Taşı çekerken kuleyi devirmemesi için hızı limitliyoruz
+        if(draggingBlock.linearVelocity.magnitude > 5f) 
+            draggingBlock.linearVelocity = draggingBlock.linearVelocity.normalized * 5f;
+    }
+
+    void ProcessTouchUp()
+    {
+        if (draggingBlock != null)
         {
-            Vector3 targetPos = hit.point + offset;
-
-            // Yukarı kalkamasın
-            targetPos.y = selectedBlock.position.y;
-
-            selectedBlock.transform.position = targetPos;
+            // HAVADA KALMA SORUNU ÇÖZÜMÜ:
+            draggingBlock.useGravity = true; 
+            draggingBlock.linearVelocity = Vector3.zero; // Bırakınca savrulmasın
+            draggingBlock.angularVelocity = Vector3.zero; // Kendi etrafında dönmesin
+            
+            draggingBlock = null;
         }
     }
 
-    private void ReleaseBlock()
+    // --- GÖRSEL ---
+    void ApplyGlow(Rigidbody block)
     {
-        if (selectedBlock != null)
+        if (block == null) return;
+        Renderer renderer = block.GetComponent<Renderer>();
+        if (renderer != null)
         {
-            // Fizik geri açılsın
-            selectedBlock.isKinematic = false;
-
-            selectedBlock = null;
+            originalColor = renderer.material.color;
+            renderer.material.EnableKeyword("_EMISSION");
+            renderer.material.SetColor("_EmissionColor", Color.white * 0.4f); 
         }
     }
 
-    private void SetHighlight(Rigidbody target)
+    void RemoveGlow()
     {
-        if (highlightedBlock != null) ToggleOutline(highlightedBlock, false);
-
-        highlightedBlock = target;
-
-        if (highlightedBlock != null) ToggleOutline(highlightedBlock, true);
-    }
-
-    private void ToggleOutline(Rigidbody rb, bool state)
-    {
-        Renderer rend = rb.GetComponent<Renderer>();
-
-        if (rend != null)
+        if (glowingBlock == null) return;
+        Renderer renderer = glowingBlock.GetComponent<Renderer>();
+        if (renderer != null)
         {
-            if (state)
-            {
-                rend.material.SetColor("_EmissionColor", glowColor * 0.5f);
-                rend.material.EnableKeyword("_EMISSION");
-            }
-            else
-            {
-                rend.material.DisableKeyword("_EMISSION");
-            }
+            renderer.material.DisableKeyword("_EMISSION");
+            renderer.material.SetColor("_EmissionColor", Color.black); 
         }
+        glowingBlock = null;
     }
 }

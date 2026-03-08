@@ -1,2 +1,12 @@
 fileFormatVersion: 2
 guid: 588d98e3cc2c74e418d608008bfcd0be
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - hoverTarget: {fileID: 5850070665089857135, guid: c694b465b1a51b94299aeaca67c0b78d, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
